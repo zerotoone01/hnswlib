@@ -27,7 +27,8 @@ public class FastText {
 
     private static final String WORDS_FILE_URL = "https://dl.fbaipublicfiles.com/fasttext/vectors-crawl/cc.en.300.vec.gz";
 
-    private static final Path TMP_PATH = Paths.get(System.getProperty("java.io.tmpdir"));
+//    private static final Path TMP_PATH = Paths.get(System.getProperty("java.io.tmpdir"));
+    private static final Path TMP_PATH = Paths.get(System.getProperty("user.dir"));
 
     public static void main(String[] args) throws Exception {
 
@@ -44,9 +45,13 @@ public class FastText {
         System.out.println("Constructing index.");
 
         HnswIndex<String, float[], Word, Float> hnswIndex = HnswIndex
+                //对象的维度，距离函数，一个index最大能容纳的元素数量
                 .newBuilder(300, DistanceFunctions.FLOAT_INNER_PRODUCT, words.size())
+                //每个点需要与图中其他的点建立的连接数
                 .withM(16)
+                //需要返回的近邻数量，用于确定新插入点的位置
                 .withEf(200)
+                //动态候选元素集合大小，要大于等于ef，值越大精确度越高，耗时越长
                 .withEfConstruction(200)
                 .build();
 
@@ -60,6 +65,7 @@ public class FastText {
 
         System.out.printf("Creating index with %d words took %d millis which is %d minutes.%n", hnswIndex.size(), duration, MILLISECONDS.toMinutes(duration));
 
+        //顶层索引视图
         Index<String, float[], Word, Float> groundTruthIndex = hnswIndex.asExactIndex();
 
         Console console = System.console();
@@ -71,9 +77,18 @@ public class FastText {
 
             String input = console.readLine();
 
+            //针对已入库的数据，且id已知，可以用findNeighbors()方法处理
+            //精确查找算法
             List<SearchResult<Word, Float>> approximateResults = hnswIndex.findNeighbors(input, k);
 
+            //通过顶层索引查找算法
             List<SearchResult<Word, Float>> groundTruthResults = groundTruthIndex.findNeighbors(input, k);
+
+            //针对直接特征提取的图片，没有入库的数据，用特征向量来获取
+            //hnswIndex.findNearest();
+            //groundTruthIndex.findNearest();
+
+            //这两种查找算法的效率差别有大？
 
             System.out.println("Most similar words found using HNSW index : %n%n");
 

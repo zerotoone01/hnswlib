@@ -472,8 +472,10 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
         Node<TItem> currObj = entryPointCopy;
 
+        //计算entryPoint和当前目标点的距离
         TDistance curDist = distanceFunction.distance(destination, currObj.item.vector());
 
+        //根据entryPoint查找maxLevel到1层之间和目标对象最近的一个点
         for (int activeLevel = entryPointCopy.maxLevel(); activeLevel > 0; activeLevel--) {
 
             boolean changed = true;
@@ -482,16 +484,20 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                 changed = false;
 
                 synchronized (currObj) {
+                    //当前层对应的节点连接对象id
                     MutableIntList candidateConnections = currObj.connections[activeLevel];
 
+                    //计算各个连接点和目标对象的距离
                     for (int i = 0; i < candidateConnections.size(); i++) {
 
                         int candidateId = candidateConnections.get(i);
 
+                        //计算当前层entryPoint的各个连接点和目标对象的距离
                         TDistance candidateDistance = distanceFunction.distance(
                                 destination,
                                 nodes.get(candidateId).item.vector()
                         );
+                        //如果正在计算的节点距离要小于最开始的curDist，则会交换当前节点
                         if (lt(candidateDistance, curDist)) {
                             curDist = candidateDistance;
                             currObj = nodes.get(candidateId);
@@ -503,14 +509,18 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
             }
         }
 
+        // 以上面查询得到的点，在第0层搜索和目标对象相近距离的前max(ef, k)个值
+        // ef--近邻数量; k--需要返回的前K个值
         PriorityQueue<NodeIdAndDistance<TDistance>> topCandidates = searchBaseLayer(
                 currObj, destination, Math.max(ef, k), 0);
 
+        //如果返回值大于k，就出队，只保留前k个值
         while (topCandidates.size() > k) {
             topCandidates.poll();
         }
 
         List<SearchResult<TItem, TDistance>> results = new ArrayList<>(topCandidates.size());
+        //构建返回对象
         while (!topCandidates.isEmpty()) {
             NodeIdAndDistance<TDistance> pair = topCandidates.poll();
             results.add(0, new SearchResult<>(nodes.get(pair.nodeId).item, pair.distance, maxValueDistanceComparator));
@@ -519,6 +529,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
         return results;
     }
 
+    // https://blog.csdn.net/qq_38156298/article/details/100085892
     private PriorityQueue<NodeIdAndDistance<TDistance>> searchBaseLayer(
             Node<TItem> entryPointNode, TVector destination, int k, int layer) {
 
@@ -529,6 +540,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                     new PriorityQueue<>(Comparator.<NodeIdAndDistance<TDistance>>naturalOrder().reversed());
             PriorityQueue<NodeIdAndDistance<TDistance>> candidateSet = new PriorityQueue<>();
 
+            //TODO 这个最远距离的定义还没搞明白
             TDistance lowerBound;
 
             if (!entryPointNode.deleted) {
@@ -547,6 +559,9 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
             visitedBitSet.add(entryPointNode.id);
 
+            //开始只有一个候选节点A，然后查找A的所有近邻节点
+            //小于lowerBound距离的节点和topCandidates<k值，则会将A的近邻节点加入candidateSet
+            //这样循环查找下去，直到满足条件之后跳出循环
             while (!candidateSet.isEmpty()) {
 
                 NodeIdAndDistance<TDistance> currentPair = candidateSet.poll();
@@ -558,7 +573,6 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                 Node<TItem> node = nodes.get(currentPair.nodeId);
 
                 synchronized (node) {
-
                     MutableIntList candidates = node.connections[layer];
 
                     for (int i = 0; i < candidates.size(); i++) {
@@ -578,7 +592,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
                                 NodeIdAndDistance<TDistance> candidatePair =
                                         new NodeIdAndDistance<>(candidateId, candidateDistance, maxValueDistanceComparator);
-
+                                //近邻节点的近邻节点，如果满足条件就会塞入到候选
                                 candidateSet.add(candidatePair);
 
                                 if (!candidateNode.deleted) {
