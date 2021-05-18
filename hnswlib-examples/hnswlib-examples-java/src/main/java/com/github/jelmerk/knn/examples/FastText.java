@@ -85,7 +85,7 @@ public class FastText {
             List<SearchResult<Word, Float>> groundTruthResults = groundTruthIndex.findNeighbors(input, k);
 
             //针对直接特征提取的图片，没有入库的数据，用特征向量来获取
-            //hnswIndex.findNearest();
+//            hnswIndex.findNearest();
             //groundTruthIndex.findNearest();
 
             //这两种查找算法的效率差别有大？

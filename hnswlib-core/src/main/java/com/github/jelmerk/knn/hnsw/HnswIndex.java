@@ -207,10 +207,12 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
             throw new IllegalArgumentException("Item does not have dimensionality of : " + dimensions);
         }
 
+        //决定当前节点的层数
         int randomLevel = assignLevel(item.id(), this.levelLambda);
 
         IntArrayList[] connections = new IntArrayList[randomLevel + 1];
 
+        //如果randomLevel为0，则第0层的近邻节点数为2*M； 否则每一层的近邻节点数都为M
         for (int level = 0; level <= randomLevel; level++) {
             int levelM = randomLevel == 0 ? maxM0 : maxM;
             connections[level] = new IntArrayList(levelM);
@@ -248,8 +250,10 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                 throw new SizeLimitExceededException("The number of elements exceeds the specified limit.");
             }
 
+            //节点id是递增
             int newNodeId = nodeCount++;
 
+            //每新增一个节点id，则加入到excludedCandidates
             excludedCandidates.add(newNodeId);
 
             Node<TItem> newNode = new Node<>(newNodeId, connections, item, false);
@@ -260,12 +264,14 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
             Object lock = locks.computeIfAbsent(item.id(), k -> new Object());
 
+            //TODO 默认是null，首次为null，然后被赋值为newNodeId, 这个entryPoint是何时被赋值了呢？
             Node<TItem> entryPointCopy = entryPoint;
 
             try {
                 synchronized (lock) {
                     synchronized (newNode) {
-
+                        //如果已经拿到进入点entryPoint，并且该点的层数最大值大于randomLevel
+                        // 则可以释放全局锁，其他有锁的方法可以被正常执行
                         if (entryPoint != null && randomLevel <= entryPoint.maxLevel()) {
                             globalLock.unlock();
                         }
@@ -278,10 +284,13 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
 
                                 TDistance curDist = distanceFunction.distance(item.vector(), currObj.item.vector());
 
+                                //找到newNode的顶层N所对应的entryPoint的第N层的最小距离的邻近点
+                                // 来作为newNode的entryPoint
                                 for (int activeLevel = entryPointCopy.maxLevel(); activeLevel > newNode.maxLevel(); activeLevel--) {
 
                                     boolean changed = true;
 
+                                    //找到每一层的
                                     while (changed) {
                                         changed = false;
 
@@ -310,6 +319,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                                 }
                             }
 
+                            //
                             for (int level = Math.min(randomLevel, entryPointCopy.maxLevel()); level >= 0; level--) {
                                 PriorityQueue<NodeIdAndDistance<TDistance>> topCandidates =
                                         searchBaseLayer(currObj, item.vector(), efConstruction, level);
@@ -324,6 +334,7 @@ public class HnswIndex<TId, TVector, TItem extends Item<TId, TVector>, TDistance
                                 }
 
 
+                                //每层构建指定数量的连接
                                 mutuallyConnectNewElement(newNode, topCandidates, level);
 
                             }
